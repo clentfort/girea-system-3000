@@ -5,9 +5,11 @@ from typing import Any
 
 from bleak import BleakClient, BleakError, BLEDevice
 from bleak_retry_connector import establish_connection
+
+from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import UpdateFailed
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import DOMAIN, LOGGER
 
@@ -31,6 +33,45 @@ PROPERTY_ID_SET_POSITION = 0xFC # For Absolute Position (Percentage)
 VALUE_UP = 0x00
 VALUE_DOWN = 0x01
 VALUE_STOP = 0x00 # Stop command uses 0x00 as its value
+
+
+# --- Constants for Gira Broadcast Parsing ---
+GIRA_MANUFACTURER_ID = 1412
+# The correct, full prefix for a position broadcast
+BROADCAST_PREFIX = bytearray.fromhex("F7032001F61001")
+
+
+def parse_gira_broadcast(service_info: BluetoothServiceInfoBleak) -> int | None:
+    """
+    Parses Gira broadcast data to extract the shutter position.
+
+    :param service_info: Bluetooth service information.
+    :return: The shutter position as a percentage (0-100), or None if not found.
+    """
+    manufacturer_data = service_info.manufacturer_data.get(GIRA_MANUFACTURER_ID)
+
+    if not manufacturer_data:
+        return None
+
+    # Check for the correct broadcast prefix and a total length of 8 bytes
+    if not manufacturer_data.startswith(BROADCAST_PREFIX) or len(manufacturer_data) != 8:
+        return None
+
+    # The position is the 8th byte (index 7)
+    position_byte = manufacturer_data[7]
+
+    # Convert the device's position (0x00=open, 0xFF=closed) to HA's percentage (100=open, 0=closed)
+    # The calculation is: ha_pos = 100 * (255 - device_pos) / 255
+    ha_position = round(100 * (255 - position_byte) / 255)
+
+    LOGGER.debug(
+        "Gira broadcast received. Raw position: %s, Converted HA position: %s%%",
+        hex(position_byte),
+        ha_position,
+    )
+
+    return ha_position
+
 
 def _generate_command(property_id: int, value: int) -> bytearray:
     """Generates the full command byte array from its parts."""
@@ -58,6 +99,25 @@ class GiraBLEClient:
         self.name = name
         self._client: BleakClient | None = None
         self._is_connecting = asyncio.Lock()
+
+        # Create a DataUpdateCoordinator for managing state updates from broadcasts
+        self.coordinator = DataUpdateCoordinator[int](
+            hass,
+            LOGGER,
+            name=f"Gira Shutter {name}",
+            # No need for a specific update method here, as updates
+            # will be pushed from the Bluetooth callback.
+        )
+
+    def handle_broadcast(self, service_info: BluetoothServiceInfoBleak) -> None:
+        """
+        Handle a BLE broadcast advertisement.
+        This is called from the central Bluetooth callback.
+        """
+        position = parse_gira_broadcast(service_info)
+        if position is not None:
+            # Update the coordinator with the new position
+            self.coordinator.async_set_update_data(position)
 
     async def send_command(self, command: bytearray) -> None:
         """

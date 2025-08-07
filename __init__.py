@@ -1,6 +1,7 @@
 """The Girea System 3000 (Gira Reverse Engineered) integration."""
 import logging
 
+from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
@@ -8,7 +9,7 @@ from homeassistant.helpers.typing import ConfigType
 # We will define a 'bluetooth' module (like generic_bt's bluetooth.py)
 # to handle the actual BLE communication.
 from .const import DOMAIN, LOGGER
-from.gira_ble import GiraBLEClient # This will be our custom BLE client class
+from .gira_ble import GiraBLEClient # This will be our custom BLE client class
 
 # List of platforms (entity types) your integration will support.
 # For roller shutters, we need the 'cover' platform.
@@ -30,11 +31,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Store the client instance in hass.data so other platforms (like cover.py) can access it.
     # This is a common pattern for sharing a single device connection across multiple entities.
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = gira_client # [2]
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = gira_client
+
+    # Register a callback to handle incoming BLE broadcasts
+    # This will call our GiraBLEClient's handler whenever a broadcast is received
+    # from the specific device address.
+    unsubscribe_callback = bluetooth.async_register_callback(
+        hass,
+        gira_client.handle_broadcast,
+        bluetooth.BluetoothCallbackMatcher(address=address, connectable=False),
+        bluetooth.BluetoothScanningMode.PASSIVE,
+    )
+
+    # Store the unsubscribe callback in runtime_data to be cleaned up on unload
+    entry.runtime_data = unsubscribe_callback
+
 
     # Forward the setup to the 'cover' platform.
     # This tells Home Assistant to load the 'cover.py' file for this integration.
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS) # [2]
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
 
@@ -46,11 +61,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     if unload_ok:
+        # Unsubscribe from the Bluetooth callback
+        if entry.runtime_data:
+            entry.runtime_data()
+
         # Clean up the client instance from hass.data
-        gira_client = hass.data[DOMAIN].pop(entry.entry_id)
+        hass.data[DOMAIN].pop(entry.entry_id)
         if not hass.data[DOMAIN]:
             hass.data.pop(DOMAIN)
-        if gira_client:
-            await gira_client.disconnect() # Ensure the BLE client connection is properly closed
 
     return unload_ok
