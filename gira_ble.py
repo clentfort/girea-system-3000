@@ -44,7 +44,7 @@ GIRA_MANUFACTURER_ID = 1412
 BROADCAST_PREFIX = bytearray.fromhex("F7032001F61001")
 
 
-class GiraPassiveBluetoothDataUpdateCoordinator(PassiveBluetoothDataUpdateCoordinator[int]):
+class GiraPassiveBluetoothDataUpdateCoordinator(PassiveBluetoothDataUpdateCoordinator):
     """Coordinator for receiving passive BLE broadcasts from Gira shutters."""
 
     def __init__(self, hass: HomeAssistant, address: str, name: str):
