@@ -57,6 +57,7 @@ class GiraPassiveBluetoothDataUpdateCoordinator(PassiveBluetoothDataUpdateCoordi
             connectable=False,
         )
         self.last_update_success = True  # We are available until we are not
+        self.data = None  # Initialize data attribute
 
     def _async_handle_unavailable(
         self, service_info: BluetoothServiceInfoBleak
