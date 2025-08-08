@@ -53,11 +53,12 @@ class GiraPassiveBluetoothDataUpdateCoordinator(PassiveBluetoothDataUpdateCoordi
             hass,
             LOGGER,
             address=address,
-            mode=bluetooth.BluetoothScanningMode.PASSIVE,
+            mode=bluetooth.BluetoothScanningMode.ACTIVE,
             connectable=False,
         )
         self.last_update_success = True  # We are available until we are not
         self.data = None  # Initialize data attribute
+        LOGGER.debug("Created instance for %s (%s)", name, address)
 
     def _async_handle_unavailable(
         self, service_info: BluetoothServiceInfoBleak
@@ -65,6 +66,7 @@ class GiraPassiveBluetoothDataUpdateCoordinator(PassiveBluetoothDataUpdateCoordi
         """Handle the device going unavailable."""
         self.last_update_success = False
         self.async_update_listeners()
+        LOGGER.debug("Handle unavailable for %s (%s)", self.name, self.address)
 
     def _async_handle_bluetooth_event(
         self,
@@ -73,14 +75,25 @@ class GiraPassiveBluetoothDataUpdateCoordinator(PassiveBluetoothDataUpdateCoordi
     ) -> None:
         """Handle a Bluetooth event."""
         manufacturer_data = service_info.manufacturer_data.get(GIRA_MANUFACTURER_ID)
+        LOGGER.debug("Handle bluetooth event for %s (%s) with data %s", self.name, self.address, manufacturer_data)
 
         if not manufacturer_data:
             return
 
-        if not manufacturer_data.startswith(BROADCAST_PREFIX) or len(manufacturer_data) != 8:
+        # NEW LOGIC: Check if the BROADCAST_PREFIX is anywhere within the manufacturer_data
+        try:
+            # Find the starting index of the broadcast prefix
+            prefix_index = manufacturer_data.find(BROADCAST_PREFIX)
+        except ValueError:
+            # If prefix not found, it's not a relevant broadcast
             return
 
-        position_byte = manufacturer_data[7]
+        # Ensure we have enough bytes after the prefix to read the position
+        if prefix_index == -1 or len(manufacturer_data) < prefix_index + len(BROADCAST_PREFIX) + 1:
+            return
+
+        # Extract the position byte, which is 1 byte after the prefix
+        position_byte = manufacturer_data[prefix_index + len(BROADCAST_PREFIX)]
         ha_position = round(100 * (255 - position_byte) / 255)
 
         LOGGER.debug(
