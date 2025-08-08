@@ -55,7 +55,6 @@ class GiraPassiveBluetoothDataUpdateCoordinator(PassiveBluetoothDataUpdateCoordi
             address=address,
             mode=bluetooth.BluetoothScanningMode.PASSIVE,
             connectable=False,
-            name=name,
         )
 
     def _async_handle_bluetooth_event(
