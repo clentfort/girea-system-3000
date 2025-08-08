@@ -53,7 +53,7 @@ class GiraPassiveBluetoothDataUpdateCoordinator(PassiveBluetoothDataUpdateCoordi
             hass,
             LOGGER,
             address=address,
-            mode=bluetooth.BluetoothScanningMode.PASSIVE,
+            mode=bluetooth.BluetoothScanningMode.ACTIVE,
             connectable=False,
         )
         self.last_update_success = True  # We are available until we are not
