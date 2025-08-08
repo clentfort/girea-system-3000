@@ -39,7 +39,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unsubscribe_callback = bluetooth.async_register_callback(
         hass,
         gira_client.handle_broadcast,
-        bluetooth.BluetoothCallbackMatcher(address=address, connectable=False),
+        bluetooth.BluetoothCallbackMatcher(address=address),
         bluetooth.BluetoothScanningMode.PASSIVE,
     )
 
