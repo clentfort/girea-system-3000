@@ -109,7 +109,11 @@ class GiraBLEClient:
             # will be pushed from the Bluetooth callback.
         )
 
-    def handle_broadcast(self, service_info: BluetoothServiceInfoBleak) -> None:
+    def handle_broadcast(
+        self,
+        service_info: BluetoothServiceInfoBleak,
+        change: bluetooth.BluetoothChange,
+    ) -> None:
         """
         Handle a BLE broadcast advertisement.
         This is called from the central Bluetooth callback.
