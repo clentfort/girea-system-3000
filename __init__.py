@@ -6,7 +6,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN, LOGGER
-from .gira_ble import GiraBLEClient, GiraPassiveBluetoothCoordinator
+from .gira_ble import GiraBLEClient, GiraPassiveBluetoothDataUpdateCoordinator
 
 PLATFORMS = ["cover"]
 
@@ -17,7 +17,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     name = entry.data.get("name", f"Gira Shutter {address[-5:].replace(':', '')}")
 
     # Create the coordinator that will listen for broadcasts
-    coordinator = GiraPassiveBluetoothCoordinator(
+    coordinator = GiraPassiveBluetoothDataUpdateCoordinator(
         hass,
         address=address,
         name=name,

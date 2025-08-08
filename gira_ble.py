@@ -7,8 +7,8 @@ from bleak import BleakClient, BleakError, BLEDevice
 from bleak_retry_connector import establish_connection
 
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
-from homeassistant.components.bluetooth.passive_update_processor import (
-    PassiveBluetoothCoordinator,
+from homeassistant.components.bluetooth.active_update_coordinator import (
+    PassiveBluetoothDataUpdateCoordinator,
 )
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
@@ -44,7 +44,7 @@ GIRA_MANUFACTURER_ID = 1412
 BROADCAST_PREFIX = bytearray.fromhex("F7032001F61001")
 
 
-class GiraPassiveBluetoothCoordinator(PassiveBluetoothCoordinator[int]):
+class GiraPassiveBluetoothDataUpdateCoordinator(PassiveBluetoothDataUpdateCoordinator[int]):
     """Coordinator for receiving passive BLE broadcasts from Gira shutters."""
 
     def __init__(self, hass: HomeAssistant, address: str, name: str):

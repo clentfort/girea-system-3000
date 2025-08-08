@@ -18,7 +18,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from .const import DOMAIN, LOGGER
-from .gira_ble import GiraBLEClient, GiraPassiveBluetoothCoordinator
+from .gira_ble import GiraBLEClient, GiraPassiveBluetoothDataUpdateCoordinator
 
 
 async def async_setup_entry(
@@ -28,14 +28,16 @@ async def async_setup_entry(
 ) -> None:
     """Set up Girea System 3000 cover from a config entry."""
     data = hass.data[DOMAIN][config_entry.entry_id]
-    coordinator: GiraPassiveBluetoothCoordinator = data["coordinator"]
+    coordinator: GiraPassiveBluetoothDataUpdateCoordinator = data["coordinator"]
     client: GiraBLEClient = data["client"]
 
     # Add the Gira shutter as a Home Assistant Cover entity
     async_add_entities([GireaSystem3000Cover(coordinator, client, config_entry)])
 
 
-class GireaSystem3000Cover(CoordinatorEntity[GiraPassiveBluetoothCoordinator], CoverEntity):
+class GireaSystem3000Cover(
+    CoordinatorEntity[GiraPassiveBluetoothDataUpdateCoordinator], CoverEntity
+):
     """Representation of a Gira System 3000 Cover."""
 
     _attr_has_entity_name = True
@@ -49,7 +51,7 @@ class GireaSystem3000Cover(CoordinatorEntity[GiraPassiveBluetoothCoordinator], C
 
     def __init__(
         self,
-        coordinator: GiraPassiveBluetoothCoordinator,
+        coordinator: GiraPassiveBluetoothDataUpdateCoordinator,
         client: GiraBLEClient,
         config_entry: ConfigEntry,
     ) -> None:
