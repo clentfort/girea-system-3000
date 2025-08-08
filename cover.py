@@ -96,6 +96,10 @@ class GireaSystem3000Cover(CoordinatorEntity[DataUpdateCoordinator[int]], CoverE
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
+        LOGGER.debug(
+            "Cover entity received update. New position: %s",
+            self.coordinator.data,
+        )
         # This is called when the coordinator has new data.
         # The parent class `CoordinatorEntity` will handle writing the state to HA.
         self.async_write_ha_state()

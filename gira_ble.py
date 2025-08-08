@@ -51,10 +51,14 @@ def parse_gira_broadcast(service_info: BluetoothServiceInfoBleak) -> int | None:
     manufacturer_data = service_info.manufacturer_data.get(GIRA_MANUFACTURER_ID)
 
     if not manufacturer_data:
+        # Not a Gira device
         return None
 
     # Check for the correct broadcast prefix and a total length of 8 bytes
     if not manufacturer_data.startswith(BROADCAST_PREFIX) or len(manufacturer_data) != 8:
+        LOGGER.debug(
+            "Ignoring Gira broadcast with invalid data: %s", manufacturer_data.hex()
+        )
         return None
 
     # The position is the 8th byte (index 7)
@@ -118,10 +122,14 @@ class GiraBLEClient:
         Handle a BLE broadcast advertisement.
         This is called from the central Bluetooth callback.
         """
+        LOGGER.debug("Handling Gira broadcast: %s", service_info)
         position = parse_gira_broadcast(service_info)
         if position is not None:
+            LOGGER.debug("Updating coordinator with new position: %s%%", position)
             # Update the coordinator with the new position
             self.coordinator.async_set_update_data(position)
+        else:
+            LOGGER.debug("No valid position data found in broadcast.")
 
     async def send_command(self, command: bytearray) -> None:
         """
