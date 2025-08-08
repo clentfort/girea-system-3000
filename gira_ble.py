@@ -7,7 +7,9 @@ from bleak import BleakClient, BleakError, BLEDevice
 from bleak_retry_connector import establish_connection
 
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
-from homeassistant.components.bluetooth.coordinator import PassiveBluetoothCoordinator
+from homeassistant.components.bluetooth.passive_update_processor import (
+    PassiveBluetoothCoordinator,
+)
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import UpdateFailed
