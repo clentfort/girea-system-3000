@@ -6,10 +6,13 @@ from typing import Any
 from bleak import BleakClient, BleakError, BLEDevice
 from bleak_retry_connector import establish_connection
 
-from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
+from homeassistant.components.bluetooth import (
+    BluetoothServiceInfoBleak,
+    PassiveBluetoothCoordinator,
+)
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from .const import DOMAIN, LOGGER
 
@@ -41,40 +44,49 @@ GIRA_MANUFACTURER_ID = 1412
 BROADCAST_PREFIX = bytearray.fromhex("F7032001F61001")
 
 
-def parse_gira_broadcast(service_info: BluetoothServiceInfoBleak) -> int | None:
-    """
-    Parses Gira broadcast data to extract the shutter position.
+class GiraPassiveBluetoothCoordinator(PassiveBluetoothCoordinator[int]):
+    """Coordinator for receiving passive BLE broadcasts from Gira shutters."""
 
-    :param service_info: Bluetooth service information.
-    :return: The shutter position as a percentage (0-100), or None if not found.
-    """
-    manufacturer_data = service_info.manufacturer_data.get(GIRA_MANUFACTURER_ID)
-
-    if not manufacturer_data:
-        # Not a Gira device
-        return None
-
-    # Check for the correct broadcast prefix and a total length of 8 bytes
-    if not manufacturer_data.startswith(BROADCAST_PREFIX) or len(manufacturer_data) != 8:
-        LOGGER.debug(
-            "Ignoring Gira broadcast with invalid data: %s", manufacturer_data.hex()
+    def __init__(self, hass: HomeAssistant, address: str, name: str):
+        """Initialize the coordinator."""
+        super().__init__(
+            hass,
+            LOGGER,
+            address=address,
+            mode=bluetooth.BluetoothScanningMode.PASSIVE,
+            update_method=self._async_update,
+            name=name,
         )
-        return None
 
-    # The position is the 8th byte (index 7)
-    position_byte = manufacturer_data[7]
+    async def _async_update(self, service_info: BluetoothServiceInfoBleak) -> int:
+        """Update the data."""
+        # This is the primary update method, but our logic is in the callback.
+        # We return the last known data.
+        return self.data
 
-    # Convert the device's position (0x00=open, 0xFF=closed) to HA's percentage (100=open, 0=closed)
-    # The calculation is: ha_pos = 100 * (255 - device_pos) / 255
-    ha_position = round(100 * (255 - position_byte) / 255)
+    def _async_handle_bluetooth_event(
+        self,
+        service_info: BluetoothServiceInfoBleak,
+        change: bluetooth.BluetoothChange,
+    ) -> None:
+        """Handle a Bluetooth event."""
+        manufacturer_data = service_info.manufacturer_data.get(GIRA_MANUFACTURER_ID)
 
-    LOGGER.debug(
-        "Gira broadcast received. Raw position: %s, Converted HA position: %s%%",
-        hex(position_byte),
-        ha_position,
-    )
+        if not manufacturer_data:
+            return
 
-    return ha_position
+        if not manufacturer_data.startswith(BROADCAST_PREFIX) or len(manufacturer_data) != 8:
+            return
+
+        position_byte = manufacturer_data[7]
+        ha_position = round(100 * (255 - position_byte) / 255)
+
+        LOGGER.debug(
+            "Gira broadcast received. Raw: %s, Position: %s%%",
+            manufacturer_data.hex(),
+            ha_position,
+        )
+        self.async_set_updated_data(ha_position)
 
 
 def _generate_command(property_id: int, value: int) -> bytearray:
@@ -103,33 +115,6 @@ class GiraBLEClient:
         self.name = name
         self._client: BleakClient | None = None
         self._is_connecting = asyncio.Lock()
-
-        # Create a DataUpdateCoordinator for managing state updates from broadcasts
-        self.coordinator = DataUpdateCoordinator[int](
-            hass,
-            LOGGER,
-            name=f"Gira Shutter {name}",
-            # No need for a specific update method here, as updates
-            # will be pushed from the Bluetooth callback.
-        )
-
-    def handle_broadcast(
-        self,
-        service_info: BluetoothServiceInfoBleak,
-        change: bluetooth.BluetoothChange,
-    ) -> None:
-        """
-        Handle a BLE broadcast advertisement.
-        This is called from the central Bluetooth callback.
-        """
-        LOGGER.debug("Handling Gira broadcast: %s", service_info)
-        position = parse_gira_broadcast(service_info)
-        if position is not None:
-            LOGGER.debug("Updating coordinator with new position: %s%%", position)
-            # Update the coordinator with the new position
-            self.coordinator.async_set_update_data(position)
-        else:
-            LOGGER.debug("No valid position data found in broadcast.")
 
     async def send_command(self, command: bytearray) -> None:
         """

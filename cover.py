@@ -14,12 +14,11 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
-    DataUpdateCoordinator,
     UpdateFailed,
 )
 
 from .const import DOMAIN, LOGGER
-from .gira_ble import GiraBLEClient
+from .gira_ble import GiraBLEClient, GiraPassiveBluetoothCoordinator
 
 
 async def async_setup_entry(
@@ -28,13 +27,15 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Girea System 3000 cover from a config entry."""
-    gira_client: GiraBLEClient = hass.data[DOMAIN][config_entry.entry_id]
+    data = hass.data[DOMAIN][config_entry.entry_id]
+    coordinator: GiraPassiveBluetoothCoordinator = data["coordinator"]
+    client: GiraBLEClient = data["client"]
 
     # Add the Gira shutter as a Home Assistant Cover entity
-    async_add_entities([GireaSystem3000Cover(gira_client, config_entry)])
+    async_add_entities([GireaSystem3000Cover(coordinator, client, config_entry)])
 
 
-class GireaSystem3000Cover(CoordinatorEntity[DataUpdateCoordinator[int]], CoverEntity):
+class GireaSystem3000Cover(CoordinatorEntity[GiraPassiveBluetoothCoordinator], CoverEntity):
     """Representation of a Gira System 3000 Cover."""
 
     _attr_has_entity_name = True
@@ -46,21 +47,26 @@ class GireaSystem3000Cover(CoordinatorEntity[DataUpdateCoordinator[int]], CoverE
     )
     _attr_assumed_state = False
 
-    def __init__(self, gira_client: GiraBLEClient, config_entry: ConfigEntry) -> None:
+    def __init__(
+        self,
+        coordinator: GiraPassiveBluetoothCoordinator,
+        client: GiraBLEClient,
+        config_entry: ConfigEntry,
+    ) -> None:
         """Initialize the cover."""
-        super().__init__(gira_client.coordinator)
-        self._gira_client = gira_client
+        super().__init__(coordinator)
+        self._client = client
         self._attr_unique_id = config_entry.entry_id
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, config_entry.entry_id)},
-            name=gira_client.name,
-            connections={(config_entry.entry_id, gira_client.address)},
+            name=client.name,
+            connections={(config_entry.entry_id, client.address)},
         )
 
     async def async_open_cover(self, **kwargs: Any) -> None:
         """Open the cover."""
         try:
-            await self._gira_client.send_up_command()
+            await self._client.send_up_command()
         except UpdateFailed:
             self._attr_available = False
             self.async_write_ha_state()
@@ -68,7 +74,7 @@ class GireaSystem3000Cover(CoordinatorEntity[DataUpdateCoordinator[int]], CoverE
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close the cover."""
         try:
-            await self._gira_client.send_down_command()
+            await self._client.send_down_command()
         except UpdateFailed:
             self._attr_available = False
             self.async_write_ha_state()
@@ -76,7 +82,7 @@ class GireaSystem3000Cover(CoordinatorEntity[DataUpdateCoordinator[int]], CoverE
     async def async_stop_cover(self, **kwargs: Any) -> None:
         """Stop the cover."""
         try:
-            await self._gira_client.send_stop_command()
+            await self._client.send_stop_command()
         except UpdateFailed:
             self._attr_available = False
             self.async_write_ha_state()
