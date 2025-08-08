@@ -54,15 +54,9 @@ class GiraPassiveBluetoothDataUpdateCoordinator(PassiveBluetoothDataUpdateCoordi
             LOGGER,
             address=address,
             mode=bluetooth.BluetoothScanningMode.PASSIVE,
-            update_method=self._async_update,
+            connectable=False,
             name=name,
         )
-
-    async def _async_update(self, service_info: BluetoothServiceInfoBleak) -> int:
-        """Update the data."""
-        # This is the primary update method, but our logic is in the callback.
-        # We return the last known data.
-        return self.data
 
     def _async_handle_bluetooth_event(
         self,
