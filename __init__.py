@@ -32,10 +32,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "client": client,
     }
 
-    # Start the coordinator
-    await coordinator.async_config_entry_first_refresh()
-
-    # Forward the setup to the 'cover' platform
+    # Forward the setup to the 'cover' platform.
+    # The coordinator will automatically start listening when the entity subscribes to it.
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
