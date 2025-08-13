@@ -56,17 +56,31 @@ class GiraPassiveBluetoothDataUpdateCoordinator(PassiveBluetoothDataUpdateCoordi
             mode=bluetooth.BluetoothScanningMode.ACTIVE,
             connectable=False,
         )
+        self._device_name = name  # Store name separately since 'name' property is read-only
         self.last_update_success = True  # We are available until we are not
         self.data = None  # Initialize data attribute
-        LOGGER.debug("Created instance for %s (%s)", name, address)
+        LOGGER.debug("Created coordinator instance for %s (%s)", name, address)
+        
+        # Add additional debug logging
+        LOGGER.debug("Coordinator address: %s, mode: %s, connectable: %s", 
+                    address, bluetooth.BluetoothScanningMode.ACTIVE, False)
+
+    async def async_start(self) -> None:
+        """Start the coordinator if it's not already started."""
+        LOGGER.debug("Starting coordinator for %s (%s)", self._device_name, self.address)
+        # The parent class should handle the actual startup
+        if hasattr(self, '_async_start') and callable(self._async_start):
+            await self._async_start()
+        else:
+            LOGGER.debug("No _async_start method found, coordinator should start automatically")
 
     def _async_handle_unavailable(
         self, service_info: BluetoothServiceInfoBleak
     ) -> None:
         """Handle the device going unavailable."""
+        LOGGER.debug("Handle unavailable for %s (%s)", self._device_name, self.address)
         self.last_update_success = False
         self.async_update_listeners()
-        LOGGER.debug("Handle unavailable for %s (%s)", self.name, self.address)
 
     def _async_handle_bluetooth_event(
         self,
@@ -74,33 +88,71 @@ class GiraPassiveBluetoothDataUpdateCoordinator(PassiveBluetoothDataUpdateCoordi
         change: bluetooth.BluetoothChange,
     ) -> None:
         """Handle a Bluetooth event."""
-        manufacturer_data = service_info.manufacturer_data.get(GIRA_MANUFACTURER_ID)
-        LOGGER.debug("Handle bluetooth event for %s (%s) with data %s", self.name, self.address, manufacturer_data)
-
-        if not manufacturer_data:
+        LOGGER.debug(
+            "Handle bluetooth event for %s (%s) - Change: %s, RSSI: %s, Device: %s", 
+            self._device_name, 
+            self.address, 
+            change,
+            service_info.rssi,
+            service_info.device.address
+        )
+        
+        # Check if this event is for our device
+        if service_info.device.address.upper() != self.address.upper():
+            LOGGER.debug(
+                "Ignoring event from different device: %s (expected: %s)",
+                service_info.device.address,
+                self.address
+            )
             return
 
-        # NEW LOGIC: Check if the BROADCAST_PREFIX is anywhere within the manufacturer_data
+        manufacturer_data = service_info.manufacturer_data.get(GIRA_MANUFACTURER_ID)
+        LOGGER.debug(
+            "Manufacturer data for %s (%s): %s", 
+            self._device_name, 
+            self.address, 
+            manufacturer_data.hex() if manufacturer_data else "None"
+        )
+
+        if not manufacturer_data:
+            LOGGER.debug("No manufacturer data found for manufacturer ID %s", GIRA_MANUFACTURER_ID)
+            return
+
+        # Debug: Show what we're looking for vs what we got
+        LOGGER.debug("Looking for broadcast prefix: %s", BROADCAST_PREFIX.hex())
+        LOGGER.debug("In manufacturer data: %s", manufacturer_data.hex())
+
+        # Check if the BROADCAST_PREFIX is anywhere within the manufacturer_data
         try:
             # Find the starting index of the broadcast prefix
             prefix_index = manufacturer_data.find(BROADCAST_PREFIX)
-        except ValueError:
-            # If prefix not found, it's not a relevant broadcast
+            LOGGER.debug("Prefix found at index: %s", prefix_index)
+        except (ValueError, AttributeError) as e:
+            LOGGER.debug("Error searching for broadcast prefix: %s", e)
             return
 
         # Ensure we have enough bytes after the prefix to read the position
-        if prefix_index == -1 or len(manufacturer_data) < prefix_index + len(BROADCAST_PREFIX) + 1:
+        if prefix_index == -1:
+            LOGGER.debug("Broadcast prefix not found in manufacturer data")
+            return
+            
+        if len(manufacturer_data) < prefix_index + len(BROADCAST_PREFIX) + 1:
+            LOGGER.debug("Not enough data after broadcast prefix")
             return
 
         # Extract the position byte, which is 1 byte after the prefix
         position_byte = manufacturer_data[prefix_index + len(BROADCAST_PREFIX)]
         ha_position = round(100 * (255 - position_byte) / 255)
 
-        LOGGER.debug(
-            "Gira broadcast received. Raw: %s, Position: %s%%",
+        LOGGER.info(
+            "Gira broadcast received from %s. Raw data: %s, Position byte: %s, HA Position: %s%%",
+            self._device_name,
             manufacturer_data.hex(),
+            position_byte,
             ha_position,
         )
+        
+        # Update the data and notify listeners
         self.last_update_success = True
         self.async_set_updated_data(ha_position)
 
@@ -211,7 +263,3 @@ class GiraBLEClient:
         """Set the absolute position of the blinds (0-100%)."""
         command = generate_position_command(percentage)
         await self.send_command(command)
-
-    async def set_ventilation_position(self) -> None:
-        """Set the blinds to the ventilation position (50%)."""
-        await self.send_command(generate_position_command(50))

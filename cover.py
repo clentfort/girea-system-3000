@@ -32,7 +32,12 @@ async def async_setup_entry(
     client: GiraBLEClient = data["client"]
 
     # Add the Gira shutter as a Home Assistant Cover entity
-    async_add_entities([GireaSystem3000Cover(coordinator, client, config_entry)])
+    cover_entity = GireaSystem3000Cover(coordinator, client, config_entry)
+    async_add_entities([cover_entity])
+    
+    # Start the coordinator after the entity is added
+    await coordinator.async_start()
+    LOGGER.debug("Coordinator started for %s", config_entry.title)
 
 
 class GireaSystem3000Cover(
@@ -64,6 +69,7 @@ class GireaSystem3000Cover(
             name=client.name,
             connections={(config_entry.entry_id, client.address)},
         )
+        LOGGER.debug("Created cover entity for %s", client.name)
 
     async def async_open_cover(self, **kwargs: Any) -> None:
         """Open the cover."""
