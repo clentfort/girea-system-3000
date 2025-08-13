@@ -36,6 +36,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # The coordinator will automatically start listening when the entity subscribes to it.
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    # Only start the coordinator after all platforms have had a chance to subscribe.
+    entry.async_on_unload(coordinator.async_start())
+    # Note: async_start() returns a function that can be awaited, not a coroutine itself.
+    # The async_on_unload() method handles this correctly.
+
     return True
 
 
@@ -46,7 +51,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
-        if not hass.data[DOMAIN]:
-            hass.data.pop(DOMAIN)
-
+    
     return unload_ok

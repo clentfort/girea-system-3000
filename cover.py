@@ -35,9 +35,7 @@ async def async_setup_entry(
     cover_entity = GireaSystem3000Cover(coordinator, client, config_entry)
     async_add_entities([cover_entity])
     
-    # Start the coordinator after the entity is added
-    await coordinator.async_start()
-    LOGGER.debug("Coordinator started for %s", config_entry.title)
+    LOGGER.debug("Coordinator setup complete for %s", config_entry.title)
 
 
 class GireaSystem3000Cover(
@@ -71,6 +69,12 @@ class GireaSystem3000Cover(
         )
         LOGGER.debug("Created cover entity for %s", client.name)
 
+    @property
+    def available(self) -> bool:
+        """Return if the entity is available."""
+        # A passive bluetooth device is always available as long as it's running
+        return True
+
     async def async_open_cover(self, **kwargs: Any) -> None:
         """Open the cover."""
         try:
@@ -98,22 +102,24 @@ class GireaSystem3000Cover(
     @property
     def current_cover_position(self) -> int | None:
         """Return the current position of the cover."""
-        return self.coordinator.data
+        # The data property is a dictionary with a "position" key
+        if self.data is None:
+            return None
+        return self.data.get("position")
 
     @property
     def is_closed(self) -> bool | None:
         """Return if the cover is closed or not."""
-        if self.coordinator.data is None:
+        position = self.current_cover_position
+        if position is None:
             return None
-        return self.coordinator.data == 0
+        return position == 0
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         LOGGER.debug(
             "Cover entity received update. New position: %s",
-            self.coordinator.data,
+            self.current_cover_position,
         )
-        # This is called when the coordinator has new data.
-        # The parent class `CoordinatorEntity` will handle writing the state to HA.
         self.async_write_ha_state()

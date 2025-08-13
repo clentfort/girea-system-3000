@@ -1,13 +1,13 @@
 """Bluetooth LE communication for Gira System 3000 devices."""
 import asyncio
 import logging
-from typing import Any
+from typing import Any, cast, Optional
 
 from bleak import BleakClient, BleakError, BLEDevice
 from bleak_retry_connector import establish_connection
 
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
-from homeassistant.components.bluetooth.active_update_coordinator import (
+from homeassistant.components.bluetooth.passive_update_coordinator import (
     PassiveBluetoothDataUpdateCoordinator,
 )
 from homeassistant.components import bluetooth
@@ -57,22 +57,12 @@ class GiraPassiveBluetoothDataUpdateCoordinator(PassiveBluetoothDataUpdateCoordi
             connectable=False,
         )
         self._device_name = name  # Store name separately since 'name' property is read-only
-        self.last_update_success = True  # We are available until we are not
-        self.data = None  # Initialize data attribute
         LOGGER.debug("Created coordinator instance for %s (%s)", name, address)
         
         # Add additional debug logging
         LOGGER.debug("Coordinator address: %s, mode: %s, connectable: %s", 
                     address, bluetooth.BluetoothScanningMode.ACTIVE, False)
 
-    async def async_start(self) -> None:
-        """Start the coordinator if it's not already started."""
-        LOGGER.debug("Starting coordinator for %s (%s)", self._device_name, self.address)
-        # The parent class should handle the actual startup
-        if hasattr(self, '_async_start') and callable(self._async_start):
-            await self._async_start()
-        else:
-            LOGGER.debug("No _async_start method found, coordinator should start automatically")
 
     def _async_handle_unavailable(
         self, service_info: BluetoothServiceInfoBleak
@@ -86,8 +76,8 @@ class GiraPassiveBluetoothDataUpdateCoordinator(PassiveBluetoothDataUpdateCoordi
         self,
         service_info: BluetoothServiceInfoBleak,
         change: bluetooth.BluetoothChange,
-    ) -> None:
-        """Handle a Bluetooth event."""
+    ) -> Optional[dict]:
+        """Handle a Bluetooth event and return the updated data."""
         LOGGER.debug(
             "Handle bluetooth event for %s (%s) - Change: %s, RSSI: %s, Device: %s", 
             self._device_name, 
@@ -104,7 +94,7 @@ class GiraPassiveBluetoothDataUpdateCoordinator(PassiveBluetoothDataUpdateCoordi
                 service_info.device.address,
                 self.address
             )
-            return
+            return None
 
         manufacturer_data = service_info.manufacturer_data.get(GIRA_MANUFACTURER_ID)
         LOGGER.debug(
@@ -116,7 +106,7 @@ class GiraPassiveBluetoothDataUpdateCoordinator(PassiveBluetoothDataUpdateCoordi
 
         if not manufacturer_data:
             LOGGER.debug("No manufacturer data found for manufacturer ID %s", GIRA_MANUFACTURER_ID)
-            return
+            return None
 
         # Debug: Show what we're looking for vs what we got
         LOGGER.debug("Looking for broadcast prefix: %s", BROADCAST_PREFIX.hex())
@@ -129,16 +119,16 @@ class GiraPassiveBluetoothDataUpdateCoordinator(PassiveBluetoothDataUpdateCoordi
             LOGGER.debug("Prefix found at index: %s", prefix_index)
         except (ValueError, AttributeError) as e:
             LOGGER.debug("Error searching for broadcast prefix: %s", e)
-            return
+            return None
 
         # Ensure we have enough bytes after the prefix to read the position
         if prefix_index == -1:
             LOGGER.debug("Broadcast prefix not found in manufacturer data")
-            return
+            return None
             
         if len(manufacturer_data) < prefix_index + len(BROADCAST_PREFIX) + 1:
             LOGGER.debug("Not enough data after broadcast prefix")
-            return
+            return None
 
         # Extract the position byte, which is 1 byte after the prefix
         position_byte = manufacturer_data[prefix_index + len(BROADCAST_PREFIX)]
@@ -152,9 +142,9 @@ class GiraPassiveBluetoothDataUpdateCoordinator(PassiveBluetoothDataUpdateCoordi
             ha_position,
         )
         
-        # Update the data and notify listeners
-        self.last_update_success = True
-        self.async_set_updated_data(ha_position)
+        # This is the correct way to update the data for a passive coordinator
+        # by returning a dictionary containing the new data.
+        return {"position": ha_position}
 
 
 def _generate_command(property_id: int, value: int) -> bytearray:
