@@ -53,16 +53,11 @@ class GiraPassiveBluetoothDataUpdateCoordinator(PassiveBluetoothDataUpdateCoordi
             hass,
             LOGGER,
             address=address,
-            mode=bluetooth.BluetoothScanningMode.ACTIVE,
+            mode=bluetooth.BluetoothScanningMode.PASSIVE,
             connectable=False,
         )
         self._device_name = name  # Store name separately since 'name' property is read-only
         LOGGER.debug("Created coordinator instance for %s (%s)", name, address)
-        
-        # Add additional debug logging
-        LOGGER.debug("Coordinator address: %s, mode: %s, connectable: %s", 
-                    address, bluetooth.BluetoothScanningMode.ACTIVE, False)
-
 
     def _async_handle_unavailable(
         self, service_info: BluetoothServiceInfoBleak
@@ -77,53 +72,23 @@ class GiraPassiveBluetoothDataUpdateCoordinator(PassiveBluetoothDataUpdateCoordi
         service_info: BluetoothServiceInfoBleak,
         change: bluetooth.BluetoothChange,
     ) -> Optional[dict]:
-        """Handle a Bluetooth event and return the updated data."""
-        LOGGER.debug(
-            "Handle bluetooth event for %s (%s) - Change: %s, RSSI: %s, Device: %s", 
-            self._device_name, 
-            self.address, 
-            change,
-            service_info.rssi,
-            service_info.device.address
-        )
-        
         # Check if this event is for our device
         if service_info.device.address.upper() != self.address.upper():
-            LOGGER.debug(
-                "Ignoring event from different device: %s (expected: %s)",
-                service_info.device.address,
-                self.address
-            )
             return None
 
         manufacturer_data = service_info.manufacturer_data.get(GIRA_MANUFACTURER_ID)
-        LOGGER.debug(
-            "Manufacturer data for %s (%s): %s", 
-            self._device_name, 
-            self.address, 
-            manufacturer_data.hex() if manufacturer_data else "None"
-        )
-
         if not manufacturer_data:
-            LOGGER.debug("No manufacturer data found for manufacturer ID %s", GIRA_MANUFACTURER_ID)
             return None
-
-        # Debug: Show what we're looking for vs what we got
-        LOGGER.debug("Looking for broadcast prefix: %s", BROADCAST_PREFIX.hex())
-        LOGGER.debug("In manufacturer data: %s", manufacturer_data.hex())
 
         # Check if the BROADCAST_PREFIX is anywhere within the manufacturer_data
         try:
             # Find the starting index of the broadcast prefix
             prefix_index = manufacturer_data.find(BROADCAST_PREFIX)
-            LOGGER.debug("Prefix found at index: %s", prefix_index)
         except (ValueError, AttributeError) as e:
-            LOGGER.debug("Error searching for broadcast prefix: %s", e)
             return None
 
         # Ensure we have enough bytes after the prefix to read the position
         if prefix_index == -1:
-            LOGGER.debug("Broadcast prefix not found in manufacturer data")
             return None
             
         if len(manufacturer_data) < prefix_index + len(BROADCAST_PREFIX) + 1:

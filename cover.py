@@ -67,6 +67,7 @@ class GireaSystem3000Cover(
             name=client.name,
             connections={(config_entry.entry_id, client.address)},
         )
+        self._attr_current_cover_position = None  # Initialize the state to None
         LOGGER.debug("Created cover entity for %s", client.name)
 
     @property
@@ -102,10 +103,8 @@ class GireaSystem3000Cover(
     @property
     def current_cover_position(self) -> int | None:
         """Return the current position of the cover."""
-        # The data property is a dictionary with a "position" key
-        if self.data is None:
-            return None
-        return self.data.get("position")
+        # Return the cached state attribute
+        return self._attr_current_cover_position
 
     @property
     def is_closed(self) -> bool | None:
@@ -118,8 +117,13 @@ class GireaSystem3000Cover(
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        LOGGER.debug(
-            "Cover entity received update. New position: %s",
-            self.current_cover_position,
-        )
+        if self.coordinator.data is not None:
+            new_position = self.coordinator.data.get("position")
+            # Only update the state if a new position is available
+            if new_position is not None:
+                self._attr_current_cover_position = new_position
+                LOGGER.debug(
+                    "Cover entity received update. New position: %s",
+                    self.current_cover_position,
+                )
         self.async_write_ha_state()

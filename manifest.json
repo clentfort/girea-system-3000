@@ -4,6 +4,7 @@
   "name": "Girea System 3000 (Gira Reverse Engineered)",
   "bluetooth": [
     {
+      "manufacturer_data_start": [118],
       "manufacturer_id": 1412
     }
   ],
