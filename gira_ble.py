@@ -1,10 +1,15 @@
 """Bluetooth LE communication for Gira System 3000 devices."""
 import asyncio
 import logging
-from typing import Any
+from typing import Any, cast, Optional
 
 from bleak import BleakClient, BleakError, BLEDevice
 from bleak_retry_connector import establish_connection
+
+from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
+from homeassistant.components.bluetooth.passive_update_coordinator import (
+    PassiveBluetoothDataUpdateCoordinator,
+)
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import UpdateFailed
@@ -31,6 +36,83 @@ PROPERTY_ID_SET_POSITION = 0xFC # For Absolute Position (Percentage)
 VALUE_UP = 0x00
 VALUE_DOWN = 0x01
 VALUE_STOP = 0x00 # Stop command uses 0x00 as its value
+
+
+# --- Constants for Gira Broadcast Parsing ---
+GIRA_MANUFACTURER_ID = 1412
+# The correct, full prefix for a position broadcast
+BROADCAST_PREFIX = bytearray.fromhex("F7032001F61001")
+
+
+class GiraPassiveBluetoothDataUpdateCoordinator(PassiveBluetoothDataUpdateCoordinator):
+    """Coordinator for receiving passive BLE broadcasts from Gira shutters."""
+
+    def __init__(self, hass: HomeAssistant, address: str, name: str):
+        """Initialize the coordinator."""
+        super().__init__(
+            hass,
+            LOGGER,
+            address=address,
+            mode=bluetooth.BluetoothScanningMode.PASSIVE,
+            connectable=False,
+        )
+        self._device_name = name  # Store name separately since 'name' property is read-only
+        LOGGER.debug("Created coordinator instance for %s (%s)", name, address)
+
+    def _async_handle_unavailable(
+        self, service_info: BluetoothServiceInfoBleak
+    ) -> None:
+        """Handle the device going unavailable."""
+        LOGGER.debug("Handle unavailable for %s (%s)", self._device_name, self.address)
+        self.last_update_success = False
+        self.async_update_listeners()
+
+    def _async_handle_bluetooth_event(
+        self,
+        service_info: BluetoothServiceInfoBleak,
+        change: bluetooth.BluetoothChange,
+    ) -> Optional[dict]:
+        # Check if this event is for our device
+        if service_info.device.address.upper() != self.address.upper():
+            return None
+
+        manufacturer_data = service_info.manufacturer_data.get(GIRA_MANUFACTURER_ID)
+        if not manufacturer_data:
+            return None
+
+        # Check if the BROADCAST_PREFIX is anywhere within the manufacturer_data
+        try:
+            # Find the starting index of the broadcast prefix
+            prefix_index = manufacturer_data.find(BROADCAST_PREFIX)
+        except (ValueError, AttributeError) as e:
+            return None
+
+        # Ensure we have enough bytes after the prefix to read the position
+        if prefix_index == -1:
+            return None
+            
+        if len(manufacturer_data) < prefix_index + len(BROADCAST_PREFIX) + 1:
+            LOGGER.debug("Not enough data after broadcast prefix")
+            return None
+
+        # Extract the position byte, which is 1 byte after the prefix
+        position_byte = manufacturer_data[prefix_index + len(BROADCAST_PREFIX)]
+        ha_position = round(100 * (255 - position_byte) / 255)
+
+        LOGGER.info(
+            "Gira broadcast received from %s. Raw data: %s, Position byte: %s, HA Position: %s%%",
+            self._device_name,
+            manufacturer_data.hex(),
+            position_byte,
+            ha_position,
+        )
+        
+        # This is the correct way to update the data for a passive coordinator
+        # by returning a dictionary containing the new data.
+        self.data = {"position": ha_position}
+        self.async_update_listeners()
+
+
 
 def _generate_command(property_id: int, value: int) -> bytearray:
     """Generates the full command byte array from its parts."""
@@ -138,7 +220,3 @@ class GiraBLEClient:
         """Set the absolute position of the blinds (0-100%)."""
         command = generate_position_command(percentage)
         await self.send_command(command)
-
-    async def set_ventilation_position(self) -> None:
-        """Set the blinds to the ventilation position (50%)."""
-        await self.send_command(generate_position_command(50))

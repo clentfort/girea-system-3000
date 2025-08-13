@@ -9,14 +9,16 @@ from homeassistant.components.cover import (
     CoverEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import UpdateFailed
+from homeassistant.helpers.update_coordinator import (
+    CoordinatorEntity,
+    UpdateFailed,
+)
 
 from .const import DOMAIN, LOGGER
-from .gira_ble import GiraBLEClient
-
+from .gira_ble import GiraBLEClient, GiraPassiveBluetoothDataUpdateCoordinator
 
 
 async def async_setup_entry(
@@ -25,13 +27,20 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Girea System 3000 cover from a config entry."""
-    gira_client: GiraBLEClient = hass.data[DOMAIN][config_entry.entry_id]
+    data = hass.data[DOMAIN][config_entry.entry_id]
+    coordinator: GiraPassiveBluetoothDataUpdateCoordinator = data["coordinator"]
+    client: GiraBLEClient = data["client"]
 
     # Add the Gira shutter as a Home Assistant Cover entity
-    async_add_entities([GireaSystem3000Cover(gira_client, config_entry)])
+    cover_entity = GireaSystem3000Cover(coordinator, client, config_entry)
+    async_add_entities([cover_entity])
+    
+    LOGGER.debug("Coordinator setup complete for %s", config_entry.title)
 
 
-class GireaSystem3000Cover(CoverEntity):
+class GireaSystem3000Cover(
+    CoordinatorEntity[GiraPassiveBluetoothDataUpdateCoordinator], CoverEntity
+):
     """Representation of a Gira System 3000 Cover."""
 
     _attr_has_entity_name = True
@@ -41,30 +50,36 @@ class GireaSystem3000Cover(CoverEntity):
         | CoverEntityFeature.CLOSE
         | CoverEntityFeature.STOP
     )
-    _attr_available = True
-    _attr_is_closed = None  # Add this to satisfy CoverEntity requirements
-    _attr_assumed_state = True
+    _attr_assumed_state = False
 
-
-    def __init__(self, gira_client: GiraBLEClient, config_entry: ConfigEntry) -> None:
+    def __init__(
+        self,
+        coordinator: GiraPassiveBluetoothDataUpdateCoordinator,
+        client: GiraBLEClient,
+        config_entry: ConfigEntry,
+    ) -> None:
         """Initialize the cover."""
-        self._gira_client = gira_client
+        super().__init__(coordinator)
+        self._client = client
         self._attr_unique_id = config_entry.entry_id
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, config_entry.entry_id)},
-            name=gira_client.name,
+            name=client.name,
+            connections={(config_entry.entry_id, client.address)},
         )
-        self._is_opening = None
-        self._is_closing = None
+        self._attr_current_cover_position = None  # Initialize the state to None
+        LOGGER.debug("Created cover entity for %s", client.name)
+
+    @property
+    def available(self) -> bool:
+        """Return if the entity is available."""
+        # A passive bluetooth device is always available as long as it's running
+        return True
 
     async def async_open_cover(self, **kwargs: Any) -> None:
         """Open the cover."""
         try:
-            await self._gira_client.send_up_command()
-            self._is_opening = True
-            self._is_closing = False
-            self.async_write_ha_state()
-            self._attr_available = True
+            await self._client.send_up_command()
         except UpdateFailed:
             self._attr_available = False
             self.async_write_ha_state()
@@ -72,11 +87,7 @@ class GireaSystem3000Cover(CoverEntity):
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close the cover."""
         try:
-            await self._gira_client.send_down_command()
-            self._is_opening = False
-            self._is_closing = True
-            self.async_write_ha_state()
-            self._attr_available = True
+            await self._client.send_down_command()
         except UpdateFailed:
             self._attr_available = False
             self.async_write_ha_state()
@@ -84,26 +95,35 @@ class GireaSystem3000Cover(CoverEntity):
     async def async_stop_cover(self, **kwargs: Any) -> None:
         """Stop the cover."""
         try:
-            await self._gira_client.send_stop_command()
-            self._is_opening = False
-            self._is_closing = False
-            self.async_write_ha_state()
-            self._attr_available = True
+            await self._client.send_stop_command()
         except UpdateFailed:
             self._attr_available = False
             self.async_write_ha_state()
 
     @property
-    def is_opening(self) -> bool | None:
-        """Return if the cover is opening or not."""
-        return self._is_opening
-
-    @property
-    def is_closing(self) -> bool | None:
-        """Return if the cover is closing or not."""
-        return self._is_closing
-
-    @property
     def current_cover_position(self) -> int | None:
-        """This device does not report its position, so we return a static value or None."""
-        return None
+        """Return the current position of the cover."""
+        # Return the cached state attribute
+        return self._attr_current_cover_position
+
+    @property
+    def is_closed(self) -> bool | None:
+        """Return if the cover is closed or not."""
+        position = self.current_cover_position
+        if position is None:
+            return None
+        return position == 0
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        if self.coordinator.data is not None:
+            new_position = self.coordinator.data.get("position")
+            # Only update the state if a new position is available
+            if new_position is not None:
+                self._attr_current_cover_position = new_position
+                LOGGER.debug(
+                    "Cover entity received update. New position: %s",
+                    self.current_cover_position,
+                )
+        self.async_write_ha_state()
