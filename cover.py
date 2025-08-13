@@ -116,7 +116,6 @@ class GireaSystem3000Cover(
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        LOGGER.debug('Update from coordinator')
         """Handle updated data from the coordinator."""
         if self.coordinator.data is not None:
             new_position = self.coordinator.data.get("position")

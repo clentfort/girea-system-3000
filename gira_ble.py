@@ -109,7 +109,9 @@ class GiraPassiveBluetoothDataUpdateCoordinator(PassiveBluetoothDataUpdateCoordi
         
         # This is the correct way to update the data for a passive coordinator
         # by returning a dictionary containing the new data.
-        return {"position": ha_position}
+        self.data = {"position": ha_position}
+        self.async_update_listeners()
+
 
 
 def _generate_command(property_id: int, value: int) -> bytearray:
