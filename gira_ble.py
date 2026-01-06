@@ -174,6 +174,7 @@ class GiraBLEClient:
                     BleakClient, 
                     device, 
                     self.name,
+                    pair=True,
                     timeout=60,
                     max_attempts=5
                 )
