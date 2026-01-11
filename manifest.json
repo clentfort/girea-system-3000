@@ -9,7 +9,9 @@
     }
   ],
   "codeowners": [
-    "@clentfort"
+    "@clentfort",
+    "@stho",
+    "@rgausch"
   ],
   "config_flow": true,
   "dependencies": ["bluetooth_adapters"],
