@@ -1,103 +1,104 @@
 # Gira System 3000 Bluetooth Protocol Documentation
 
-This document describes the binary protocol used by Gira System 3000 Bluetooth devices (specifically shutter controllers) and compares it with the current Home Assistant integration.
+This document provides a detailed analysis of the binary protocol used by Gira System 3000 Bluetooth devices, based on reverse-engineering of the official application logic and data.
 
-## Binary Message Structure
+## 1. Binary Message Structure
 
-The protocol uses a consistent binary structure for both commands (write) and status updates (broadcast/notification).
+The protocol uses a fixed-header binary format for both commands (Write) and status updates (Notification/Broadcast).
 
-### Structure Overview
+### Full Packet Breakdown
+`[MessageType] [ObjectID High] [ObjectID Low] [ElementsNum] [PropertyID] [StartIndex] [ValueLength] [Value...]`
 
-`[MessageType] [ObjectID (2 bytes)] [ElementsNum] [PropertyID] [StartIndex] [ValueLength] [Value...]`
-
-| Field | Length | Description |
+| Field | Size | Description |
 | :--- | :--- | :--- |
-| **MessageType** | 1 byte | `0xF6` (246) for Write/Command, `0xF7` (247) for Notification/Broadcast. |
-| **ObjectID** | 2 bytes | The ID of the device object. For the shutter controller, this is `800` (`0x0320`). |
-| **ElementsNum**| 1 byte | Number of elements being addressed. Typically `0x01`. |
-| **PropertyID** | 1 byte | The ID of the parameter or property (e.g., Move, Position). |
-| **StartIndex** | 1 byte | Typically `0x10` (representing index 1). |
-| **ValueLength** | 1 byte | Length of the value field in bytes. |
-| **Value** | Variable| The actual data (binary, scaling, or enum). |
+| **MessageType** | 1 byte | `0xF6` (246): Write/Command<br>`0xF7` (247): Notification/Broadcast |
+| **ObjectID** | 2 bytes | Identifies the device function/submodule. Shutter is `800` (`0x0320`). |
+| **ElementsNum** | 1 byte | Number of elements being addressed. Usually `0x01`. |
+| **PropertyID** | 1 byte | The specific parameter or action (see PID table). |
+| **StartIndex** | 1 byte | Address offset. Usually `0x10` (Index 1). |
+| **ValueLength** | 1 byte | Length of the data payload in bytes. |
+| **Value** | Variable | The actual payload data, encoded according to the Data Type (PDT). |
 
 ---
 
-## Key Property IDs (PIDs)
+## 2. Data Types (PDT) and Encoding
 
-Based on the analysis of the Gira JavaScript source, the following Property IDs are used for the Shutter Controller (Object 800):
+The protocol leverages standard KNX Data Point Types (DPT) for value encoding.
 
-| Property ID | Hex | Name | Type | Description |
+| Type Name | Size | KNX DPT | Description |
+| :--- | :--- | :--- | :--- |
+| **PDT_BINARY** | 1 byte | 1.xxx | `0x00` (Off/Up/Stop), `0x01` (On/Down) |
+| **PDT_SCALING** | 1 byte | 5.001 | 0-255 representing 0-100%. `0x00` = 100% (Open), `0xFF` = 0% (Closed). |
+| **PDT_ENUM8** | 1 byte | 20.xxx | Enumerated values (e.g., Operation Mode, Movement Status). |
+| **PDT_UNSIGNED_INT**| 2 bytes | 7.xxx | Big-endian 16-bit integer (e.g., Move Time in seconds). |
+| **PDT_CONTROL** | 10 bytes| - | Complex control structure for state/loading management. |
+
+---
+
+## 3. Comprehensive Property ID (PID) Table
+
+All PIDs listed below are for **ObjectID 800 (Shutter)**.
+
+### Operational Commands
+| PID | Hex | Name | Type | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| 255 | `0xFF` | `PID_Move UpDown` | PDT_BINARY | `0`: Up, `1`: Down |
-| 254 | `0xFE` | `PID_StopStep UpDown` | PDT_BINARY | `0`: Step Up, `1`: Step Down |
-| 253 | `0xFD` | `PID_STOP` | PDT_BINARY | `0`: Stop |
-| 252 | `0xFC` | `PPID_Set_Absolute_Position_Blinds` | PDT_SCALING | 0-100% (mapped to 255-0) |
-| 251 | `0xFB` | `PPID_Set_Absolute_Position_Slat` | PDT_SCALING | 0-100% (mapped to 255-0) |
-| 247 | `0xF7` | `PID_INFO_MOVE_UP_DOWN_STOP` | PDT_ENUM8 | Status: 0-1 Stopped, >1 Moving |
-| 246 | `0xF6` | `PID_CURRENT_ABSOLUTE_POSITION_BLINDS`| PDT_SCALING | Read-only blind position |
-| 245 | `0xF5` | `PID_CURRENT_ABSOLUTE_POSITION_SLATS` | PDT_SCALING | Read-only slat position |
-| 162 | `0xA2` | `PID_OPERATION_MODE` | PDT_ENUM8 | `0`: Blinds (with slats), `1`: Roller Shutter |
+| 255 | `0xFF` | `PID_Move UpDown` | Binary | `0`: Up, `1`: Down |
+| 254 | `0xFE` | `PID_StopStep UpDown` | Binary | `0`: Step/Tilt Up, `1`: Step/Tilt Down |
+| 253 | `0xFD` | `PID_STOP` | Binary | `0`: Stop movement |
+| 252 | `0xFC` | `PPID_Set_Absolute_Position_Blinds` | Scaling | Set blind position (0-255) |
+| 251 | `0xFB` | `PPID_Set_Absolute_Position_Slat` | Scaling | Set slat/tilt position (0-255) |
+
+### Status & Feedback
+| PID | Hex | Name | Type | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| 247 | `0xF7` | `PID_INFO_MOVE_UP_DOWN_STOP` | Enum8 | `0-1`: Stopped, `>1`: Moving |
+| 246 | `0xF6` | `PID_CURRENT_ABSOLUTE_POSITION_BLINDS`| Scaling | Current blind position (Read-only) |
+| 245 | `0xF5` | `PID_CURRENT_ABSOLUTE_POSITION_SLATS` | Scaling | Current slat position (Read-only) |
+| 242 | `0xF2` | `PID_Info_Blocking_Function_State` | Binary | `1`: Blocked (e.g., wind alarm) |
+
+### Configuration & Settings
+| PID | Hex | Name | Type | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| 1 | `0x01` | `PID_OBJECT_TYPE` | UInt16 | Device Type (Shutter = 800) |
+| 5 | `0x05` | `PID_LOAD_STATE_CONTROL` | Control | Mgmt: 1=Start, 2=Done, 4=Unload |
+| 52 | `0x34` | `PID_MOVE_UP_DOWN_TIME` | UInt16 | Total travel time in seconds |
+| 67 | `0x43` | `PID_MAX_SLAT_MOVE_TIME` | UInt16 | Slat adjustment time in ms |
+| 160 | `0xA0` | `PID_ENABLE_INVERS_MODE` | Binary | Invert Up/Down logic |
+| 162 | `0xA2` | `PID_OPERATION_MODE` | Enum8 | `0`: Blinds (Slats), `1`: Roller Shutter |
+| 169 | `0xA9` | `PID_VENTILATION_BLINDS_POS` | Scaling | Preset ventilation position (Blinds) |
+| 170 | `0xAA` | `PID_VENTILATION_SLATS_POS` | Scaling | Preset ventilation position (Slats) |
+| 181 | `0xB5` | `PID_BLOCKING_FUNCTION_ENABLE` | Binary | Enable/Disable lock function |
 
 ---
 
-## Command Construction Examples
+## 4. Advanced Functions
 
-### Move Down
-- **Message Type**: `0xF6` (Write)
-- **Object ID**: `0x0320` (800)
-- **Elements**: `0x01`
-- **PID**: `0xFF` (Move)
-- **Start Index**: `0x10` (1)
-- **Length**: `0x01`
-- **Value**: `0x01` (Down)
-- **Full Hex**: `F6 03 20 01 FF 10 01 01`
+### Sun Protection & Twilight
+The device supports automatic positions based on environmental triggers (Sun/Twilight).
+- **Sun Activation**: PIDs `172` (Blind) and `173` (Slat).
+- **Sun Deactivation**: PIDs `174` (Blind) and `175` (Slat).
+- **Twilight Activation**: PIDs `176` (Blind) and `177` (Slat).
+- **Twilight Deactivation**: PIDs `178` (Blind) and `179` (Slat).
 
-### Set Blind Position to 50%
-- **Value Calculation**: `(100 - 50) * 255 / 100 = 127.5` -> `127` (`0x7F`)
-- **PID**: `0xFC`
-- **Full Hex**: `F6 03 20 01 FC 10 01 7F`
+### Multi-Device Protocol Scalability
+While this documentation focuses on shutters (ObjectID 800), the protocol structure is designed to handle other Gira System 3000 Bluetooth devices by changing the `ObjectID`:
+- **Switching Inserts**: Likely use ObjectIDs in the 100-200 range with `PID_ON_OFF`.
+- **Dimming Inserts**: Likely use ObjectIDs in the 200-300 range with `PID_BRIGHTNESS` (PDT_SCALING).
+- **Addressing**: The combination of `ObjectID` and `PropertyID` allows the Gira App to communicate with different hardware modules using the same BLE characteristic.
 
 ---
 
-## Broadcast Parsing
+## 5. Comparison with Current Integration
 
-The device periodically broadcasts its state via Manufacturer Data (Manufacturer ID `1412`).
+| Feature | Protocol Support | Integration Support | Status |
+| :--- | :--- | :--- | :--- |
+| **Move Up/Down** | Yes (PID 255) | Yes | Complete |
+| **Stop** | Yes (PID 253) | Yes | Complete |
+| **Blind Position** | Yes (PID 252) | Yes | Complete |
+| **Slat/Tilt Position** | Yes (PID 251) | **No** | Missing |
+| **Moving Status** | Yes (PID 247) | **No** | Missing |
+| **Block State** | Yes (PID 242) | **No** | Missing |
+| **Op Mode Detection** | Yes (PID 162) | **No** | Manual |
 
-### Blind Position Update
-The prefix for a blind position broadcast is `F7 03 20 01 F6 10 01`.
-The byte immediately following this prefix is the raw position value (`0-255`).
-
-**Conversion to Home Assistant (0-100%):**
-`HA_Position = round(100 * (255 - RawValue) / 255)`
-
----
-
-## Comparison with Current Implementation
-
-The current implementation in `gira_ble.py` and `cover.py` handles the core functionality but lacks support for advanced features.
-
-### Currently Supported
-- **Movement**: Up, Down, Stop, and Step (Tilt) Up/Down are supported.
-- **Absolute Position**: Setting and reading the blind position (0-100%) is supported.
-- **Passive Updates**: The integration correctly parses blind position broadcasts.
-
-### Missing / Not Handled
-- **Slat Control (Tilt)**:
-    - Setting absolute slat position (`PID 0xFB`) is not implemented.
-    - Reading slat position from broadcasts (`PID 0xF5`) is not implemented.
-- **Moving Status**:
-    - The integration does not use `PID 0xF7` to detect if the shutter is currently in motion.
-- **Operation Mode Detection**:
-    - The integration assumes a standard shutter. It does not read `PID 0xA2` to determine if the device is in "Blinds" mode (supporting slats) or "Roller Shutter" mode.
-- **Configuration Properties**:
-    - Advanced settings like ventilation positions, move times, and inverse mode are currently ignored.
-
----
-
-## Device Templates & UI
-
-The Gira app determines the UI layout (one slider vs. two sliders) based on two factors:
-1. `PID_OPERATION_MODE` (`0` = Blinds, `1` = Roller Shutter)
-2. `LOCAL_OPERATION_ELEMENT_SELECTION` (Custom property for UI selection)
-
-If `OperationMode == 0` (Blinds), the device supports both blind position and slat position.
+### Implementation Recommendation
+To improve the integration, the `GiraPassiveBluetoothDataUpdateCoordinator` should be updated to listen for PIDs `0xF5` (Slat position) and `0xF7` (Movement status) in addition to the current `0xF6` (Blind position).
