@@ -1,3 +1,24 @@
+> [!IMPORTANT]
+> **Maintenance update — continued development has moved**
+>
+> This repository is no longer the primary development location for this integration.
+>
+> The original maintainer has stepped back from active development, and ongoing maintenance is now
+> being continued independently in the following repository:
+>
+> **➡️ [Continue to the actively maintained fork](https://github.com/stho/girea-system-3000)**
+>
+> ### What does this mean?
+>
+> - **Development and releases:** New fixes, features, and releases are published in the maintained
+>   fork.
+> - **Bug reports and feature requests:** Please open new issues in the fork's issue tracker.
+> - **Installation and updates:** See the fork's README for the current installation instructions
+>   and migration guide.
+> - **Existing installations:** Your current installation is not automatically migrated. Please follow the migration instructions before switching to the fork.
+>
+> This repository remains available as a historical reference. Thank you to the original maintainer and all contributors for their work on this project.
+
 # Girea System 3000
 
 This is a custom component for Home Assistant to integrate the Gira System 3000 devices via
