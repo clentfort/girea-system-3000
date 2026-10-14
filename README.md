@@ -8,33 +8,43 @@ Currently just the shutter controller "Jal+Schaltuhr" are implemented and tested
 > [!NOTE]
 > Code was generated with Gemini 2.5 Flash support.
 
-### Installation:
+## Installation
 
-#### HACS
+### Option 1: HACS (Recommended)
 
-- Ensure that HACS is installed
-- Add this repository as a custom repository
-- Search for and install the "Girea System 3000" integration
-- Restart Home Assistant
+1. **Prerequisite:** Ensure that HACS is installed and configured ([HACS Documentation](https://hacs.xyz)).
+2. **Add Repository:** Add this repository as a custom repository in HACS.
+3. **Download:** Search for and install the **"Girea System 3000"** integration.
+4. **Restart:** Restart Home Assistant to apply the changes.
 
-#### Manual installation
+### Option 2: Manual Installation
 
-- Download the latest release
-- Unpack the release and copy the custom_components/danfoss_ally directory into the 
-  custom_components directory of your Home Assistant installation
-- Restart Home Assistant
+1. **Download:** Download the latest release from the Releases page.
+2. **Extract & Copy:** Unpack the archive and copy the contents of the root directory into the
+   `custom_components/girea_system_3000` directory of your Home Assistant installation.
+3. **Restart:** Restart Home Assistant to load the new integration.
+
 
 ## Setup
 
-First of all you need to get the bluetooth address manually:
+First, you need to retrieve the Bluetooth MAC address of your device manually:
 
-- Fristly bring the shutter controller "Jal+Schaltuhr" in pairing mode to scan the bluetooth MAC 
-  address and find it in the bluetooth monitoring in Home Assistant
-- Note the MAC address down for setting it up in the Home Assistant integration
-- Add a new Device to the Girea integration using its MAC address and give it a name. It is important
-  having the shutter contrller in paring mode during setup in the integration
-- Finally push any button on the cover integration (up/down) while the device is in pairing mode
-  again
+1. **Enter Pairing Mode:** Put your "Jal+Schaltuhr" shutter controller into pairing mode.
+2. **Scan for the Device:** Open the Bluetooth monitoring tool in Home Assistant to find the
+   controller's MAC address.
+   * *Note on range:* Ensure your Bluetooth adapter is **very close** to the Gira switch during this
+     step so it can be detected. This proximity is **only required for the initial pairing process**;
+     for regular switch commands later on, the adapter does not need to remain close to the switch.
+3. **Record the Address:** Note down the MAC address for the next step.
+
+Once you have the MAC address, follow these steps to add it to Home Assistant:
+
+1. **Add the Device:** In Home Assistant, add a new device to the **Girea System 3000 integration**
+   using the recorded MAC address and assign a name to it. **Important:** The shutter controller
+   must still be in pairing mode during this configuration step.
+2. **Finalize Pairing:** Put the device into pairing mode one last time, then press any button
+   (e.g., Up or Down) on the cover integration dashboard to complete the connection.
+
 
 ## Known issues
 
